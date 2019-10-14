@@ -105,52 +105,10 @@ symfile = $(call cgtype,$(call toobj,$(1)),o,sym)
 # for match pattern
 match = $(shell echo $(2) | $(AWK) '{for(i=1;i<=NF;i++){if(match("$(1)","^"$$(i)"$$")){exit 1;}}}'; echo $$?)
 
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-# include kernel/user
 
 INCLUDE	+= libs/
 
 CFLAGS	+= $(addprefix -I,$(INCLUDE))
-
-LIBDIR	+= libs
-
-$(call add_files_cc,$(call listf_cc,$(LIBDIR)),libs,)
-
-# -------------------------------------------------------------------
-# kernel
-
-KINCLUDE	+= kern/debug/ \
-			   kern/driver/ \
-			   kern/trap/ \
-			   kern/mm/
-
-KSRCDIR		+= kern/init \
-			   kern/libs \
-			   kern/debug \
-			   kern/driver \
-			   kern/trap \
-			   kern/mm
-
-KCFLAGS		+= $(addprefix -I,$(KINCLUDE))
-
-$(call add_files_cc,$(call listf_cc,$(KSRCDIR)),kernel,$(KCFLAGS))
-
-KOBJS	= $(call read_packet,kernel libs)
-
-# create kernel target
-kernel = $(call totarget,kernel)
-
-$(kernel): tools/kernel.ld
-
-$(kernel): $(KOBJS)
-	@echo + ld $@
-	$(V)$(LD) $(LDFLAGS) -T tools/kernel.ld -o $@ $(KOBJS)
-	@$(OBJDUMP) -S $@ > $(call asmfile,kernel)
-	@$(OBJDUMP) -t $@ | $(SED) '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $(call symfile,kernel)
-
-$(call create_target,kernel)
-
-# -------------------------------------------------------------------
 
 # create bootblock
 bootfiles = $(call listf_cc,boot)
@@ -162,9 +120,9 @@ bootblock = $(call totarget,bootblock)
 $(bootblock): $(call toobj,$(bootfiles)) | $(call totarget,sign)
 	@echo + ld $@
 	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x7C00 $^ -o $(call toobj,bootblock)
-	@$(OBJDUMP) -S $(call objfile,bootblock) > $(call asmfile,bootblock) #disassembling
-	@$(OBJCOPY) -S -O binary $(call objfile,bootblock) $(call outfile,bootblock) #remove the elf infos and keep the raw binary
-	@$(call totarget,sign) $(call outfile,bootblock) $(bootblock) #add 0x55AA to the end of the raw bin and make it as the legal MBR
+	$(OBJDUMP) -S $(call objfile,bootblock) > $(call asmfile,bootblock)
+	$(OBJCOPY) -S -O binary $(call objfile,bootblock) $(call outfile,bootblock)
+	@$(call totarget,sign) $(call outfile,bootblock) $(bootblock)
 
 $(call create_target,bootblock)
 
@@ -175,18 +133,6 @@ $(call add_files_host,tools/sign.c,sign,sign)
 $(call create_target_host,sign,sign)
 
 # -------------------------------------------------------------------
-
-# create ucore.img
-UCOREIMG	:= $(call totarget,ucore.img)
-
-$(UCOREIMG): $(kernel) $(bootblock)
-	$(V)dd if=/dev/zero of=$@ count=10000
-	$(V)dd if=$(bootblock) of=$@ conv=notrunc #The input file smaller than output but dont trunck it.
-	$(V)dd if=$(kernel) of=$@ seek=1 conv=notrunc #bootblock is 512 bytes, seek=1 to skip it,than append kernel
-
-$(call create_target,ucore.img)
-
-# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 
 $(call finish_all)
 
